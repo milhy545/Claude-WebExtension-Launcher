@@ -31,9 +31,9 @@ func getPlatformSuffix() string {
 	}
 }
 
-// getArchSuffix returns the architecture suffix for macOS releases
+// getArchSuffix returns the architecture suffix for macOS and Linux releases
 func getArchSuffix() string {
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
 		return strings.ToLower(runtime.GOARCH) // "amd64" or "arm64"
 	}
 	return ""
@@ -135,14 +135,18 @@ func CheckAndUpdate() error {
 	var downloadURL string
 	var assetName string
 
-	if runtime.GOOS == "darwin" {
-		// For macOS, try architecture-specific first, then fall back to generic
+	if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
+		// For macOS and Linux, try architecture-specific first, then fall back to generic
 		arch := getArchSuffix()
-		archSpecificSuffix := fmt.Sprintf("-macos-%s", arch)
+		platformName := runtime.GOOS
+		if platformName == "darwin" {
+			platformName = "macos"
+		}
+		archSpecificSuffix := fmt.Sprintf("-%s-%s", platformName, arch)
 
-		fmt.Printf("Looking for macOS release (architecture: %s)...\n", arch)
+		fmt.Printf("Looking for %s release (architecture: %s)...\n", platformName, arch)
 
-		// First try: architecture-specific (e.g., "-macos-arm64")
+		// First try: architecture-specific (e.g., "-macos-arm64" or "-linux-amd64")
 		for _, asset := range release.Assets {
 			if strings.Contains(asset.Name, archSpecificSuffix) && strings.HasSuffix(asset.Name, ".zip") {
 				downloadURL = asset.DownloadURL
@@ -152,19 +156,19 @@ func CheckAndUpdate() error {
 			}
 		}
 
-		// Second try: generic macOS (e.g., "-macos")
+		// Second try: generic platform (e.g., "-macos" or "-linux")
 		if downloadURL == "" {
 			for _, asset := range release.Assets {
 				if strings.Contains(asset.Name, platformSuffix) && strings.HasSuffix(asset.Name, ".zip") {
 					downloadURL = asset.DownloadURL
 					assetName = asset.Name
-					fmt.Printf("Found generic macOS release: %s\n", assetName)
+					fmt.Printf("Found generic %s release: %s\n", platformName, assetName)
 					break
 				}
 			}
 		}
 	} else {
-		// For non-macOS platforms, use existing logic
+		// For Windows, use simple platform suffix matching
 		for _, asset := range release.Assets {
 			if strings.Contains(asset.Name, platformSuffix) && strings.HasSuffix(asset.Name, ".zip") {
 				downloadURL = asset.DownloadURL

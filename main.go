@@ -80,6 +80,16 @@ func main() {
 		appSupport := filepath.Join(home, "Library", "Application Support", "Claude")
 		serviceWorkerPath = filepath.Join(appSupport, "Service Worker")
 		webStoragePath = filepath.Join(appSupport, "WebStorage")
+	case "linux":
+		// Linux uses XDG_CONFIG_HOME or ~/.config
+		configHome := os.Getenv("XDG_CONFIG_HOME")
+		if configHome == "" {
+			home, _ := os.UserHomeDir()
+			configHome = filepath.Join(home, ".config")
+		}
+		claudeConfig := filepath.Join(configHome, "Claude")
+		serviceWorkerPath = filepath.Join(claudeConfig, "Service Worker")
+		webStoragePath = filepath.Join(claudeConfig, "WebStorage")
 	}
 
 	if serviceWorkerPath != "" {

@@ -301,6 +301,52 @@ rm -rf "%s"
 		}
 		os.Exit(0)
 
+	} else if runtime.GOOS == "linux" {
+		// Linux - flat structure, use shell script approach
+		executableName := getExecutableName()
+
+		// First, make sure the executable exists
+		newExePath := filepath.Join(tempDir, executableName)
+		if _, err := os.Stat(newExePath); err != nil {
+			os.Remove(tempZip)
+			os.RemoveAll(tempDir)
+			return fmt.Errorf("failed to find executable in update: %v", err)
+		}
+
+		exePath, _ := os.Executable()
+		appDir := filepath.Dir(exePath)
+
+		fmt.Println("Replacing executable and restarting...")
+
+		// Create shell script to replace binary and relaunch
+		script := fmt.Sprintf(`#!/bin/bash
+sleep 1
+cp -f "%s/%s" "%s/%s"
+chmod +x "%s/%s"
+"%s/%s" &
+rm -rf "%s"
+rm -f "%s"
+`, tempDir, executableName, appDir, executableName,
+			appDir, executableName,
+			appDir, executableName,
+			tempDir, tempZip)
+
+		scriptPath := filepath.Join(utils.GetCachePath(), "update.sh")
+		if err := os.WriteFile(scriptPath, []byte(script), 0755); err != nil {
+			os.Remove(tempZip)
+			os.RemoveAll(tempDir)
+			return fmt.Errorf("failed to create update script: %v", err)
+		}
+
+		// Execute script in background and exit
+		cmd := exec.Command("sh", scriptPath)
+		if err := cmd.Start(); err != nil {
+			os.RemoveAll(tempDir)
+			os.Remove(tempZip)
+			return fmt.Errorf("failed to start update script: %v", err)
+		}
+		os.Exit(0)
+
 	} else {
 		// Windows - flat structure, use existing .new file approach
 		executableName := getExecutableName()

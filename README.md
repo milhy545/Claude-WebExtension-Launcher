@@ -38,9 +38,36 @@ On first launch, you might see a crash dialog about the network service. This is
 ### Supported Platforms
 - **macOS** - Intel and Apple Silicon
 - **Windows** - Windows 10/11
+- **Linux** - AMD64 and ARM64 (all major distributions)
 
 ### Quick Start
+
+#### macOS / Windows
 Download the latest installer from [Releases](../../releases) and run it. The installer will handle everything automatically.
+
+#### Linux
+1. Download the appropriate release for your architecture from [Releases](../../releases):
+   - `Claude_WebExtension_Launcher-X.X.X-linux-amd64.zip` for 64-bit Intel/AMD systems
+   - `Claude_WebExtension_Launcher-X.X.X-linux-arm64.zip` for ARM64 systems
+
+2. Extract the archive:
+   ```bash
+   unzip Claude_WebExtension_Launcher-*-linux-*.zip
+   cd linux-*
+   ```
+
+3. Run the installation script:
+   ```bash
+   ./install.sh
+   ```
+
+4. Launch Claude:
+   ```bash
+   claude-webext
+   ```
+   Or search for "Claude" in your application menu.
+
+**Note for Linux users**: Since Claude doesn't officially support Linux yet, this launcher uses the Windows Electron binaries adapted for Linux. Full functionality is maintained, including all web extension features.
 
 ## Features
 
@@ -70,3 +97,39 @@ If you encounter issues:
 - Ensure you have the latest version of the installer
 - Check that your system meets the platform requirements
 - The extended installation can be completely removed by deleting the installation folder
+
+### Linux-Specific Issues
+
+**Missing dependencies**: Make sure you have Node.js installed:
+```bash
+# Ubuntu/Debian
+sudo apt install nodejs npm
+
+# Fedora
+sudo dnf install nodejs npm
+
+# Arch
+sudo pacman -S nodejs npm
+```
+
+**Permission errors**: Ensure the binary is executable:
+```bash
+chmod +x ~/.local/share/claude-webext-launcher/Claude_WebExtension_Launcher
+```
+
+**Desktop entry not showing**: Update the desktop database manually:
+```bash
+update-desktop-database ~/.local/share/applications
+```
+
+**Uninstall**: Run the uninstall script:
+```bash
+~/.local/share/claude-webext-launcher/uninstall.sh
+```
+
+Or manually remove:
+```bash
+rm -rf ~/.local/share/claude-webext-launcher
+rm -f ~/.local/bin/claude-webext
+rm -f ~/.local/share/applications/claude-webext-launcher.desktop
+```

@@ -23,6 +23,8 @@ var EmbeddedFS embed.FS
 const (
 	windowsReleasesURL = "https://storage.googleapis.com/osprey-downloads-c02f6a0d-347c-492b-a752-3e0651722e97/nest-win-x64/RELEASES"
 	macosReleasesURL   = "https://storage.googleapis.com/osprey-downloads-c02f6a0d-347c-492b-a752-3e0651722e97/nest/update_manifest.json"
+	// For Linux, we'll use Electron wrapper approach as official Linux builds are not available yet
+	linuxBaseURL       = "https://github.com/electron/electron/releases/download"
 	appFolderName      = "app-latest"
 	KeepNupkgFiles     = false
 )
@@ -61,6 +63,9 @@ func init() {
 	if runtime.GOOS == "darwin" {
 		appResourcesDir = filepath.Join(AppFolder, "Claude.app", "Contents", "Resources")
 		appExePath = filepath.Join(AppFolder, "Claude.app", "Contents", "MacOS", "Claude")
+	} else if runtime.GOOS == "linux" {
+		appResourcesDir = filepath.Join(AppFolder, "resources")
+		appExePath = filepath.Join(AppFolder, "claude")
 	} else {
 		appResourcesDir = filepath.Join(AppFolder, "resources")
 		appExePath = filepath.Join(AppFolder, "claude.exe")
@@ -223,6 +228,26 @@ func getLatestSupportedVersion() (string, string, error) {
 			}
 		}
 		return "", "", fmt.Errorf("no supported supportedVersionsList available in macOS manifest")
+	} else if runtime.GOOS == "linux" {
+		// Linux - use Windows RELEASES as base (Claude doesn't officially support Linux yet)
+		// We'll extract the Windows .nupkg and adapt it for Linux
+		resp, err := http.Get(windowsReleasesURL)
+		if err != nil {
+			return "", "", fmt.Errorf("fetching releases for Linux: %v", err)
+		}
+		defer resp.Body.Close()
+
+		releasesText, _ := io.ReadAll(resp.Body)
+
+		// Find newest supported version
+		for _, version := range supportedVersionsList {
+			filename := fmt.Sprintf("AnthropicClaude-%s-full.nupkg", version)
+			if strings.Contains(string(releasesText), filename) {
+				downloadURL := strings.Replace(windowsReleasesURL, "RELEASES", filename, 1)
+				return version, downloadURL, nil
+			}
+		}
+		return "", "", fmt.Errorf("no supported versions available for Linux")
 	} else {
 		// Windows - use existing RELEASES logic
 		resp, err := http.Get(windowsReleasesURL)
@@ -311,7 +336,7 @@ func downloadAndExtract(version, downloadURL string) error {
 			// For macOS, keep the full .app bundle structure
 			relativePath = f.Name
 		} else {
-			// Windows - only extract files from lib/net45/
+			// Windows and Linux - only extract files from lib/net45/
 			if !strings.HasPrefix(f.Name, "lib/net45/") {
 				continue
 			}
@@ -377,9 +402,9 @@ func downloadAndExtract(version, downloadURL string) error {
 	// Close the zip reader before attempting to delete temp file
 	zipReader.Close()
 
-	// macOS specific: Make sure the executable has execute permissions
+	// Platform-specific post-extraction setup
 	if runtime.GOOS == "darwin" {
-		// Make the main executable executable
+		// macOS: Make sure the executable has execute permissions
 		claudeExec := filepath.Join(AppFolder, "Claude.app", "Contents", "MacOS", "Claude")
 		if err := os.Chmod(claudeExec, 0755); err != nil {
 			fmt.Printf("Warning: Could not set executable permissions: %v\n", err)
@@ -414,6 +439,34 @@ func downloadAndExtract(version, downloadURL string) error {
 			fmt.Printf("Warning: Could not remove ShipIt: %v\n", err)
 		} else {
 			fmt.Println("Removed ShipIt to prevent self-updates")
+		}
+	} else if runtime.GOOS == "linux" {
+		// Linux: Rename claude.exe to claude and set executable permissions
+		claudeExeOld := filepath.Join(AppFolder, "claude.exe")
+		claudeExeNew := filepath.Join(AppFolder, "claude")
+
+		if err := os.Rename(claudeExeOld, claudeExeNew); err != nil {
+			fmt.Printf("Warning: Could not rename claude.exe to claude: %v\n", err)
+		} else {
+			fmt.Println("Renamed claude.exe to claude for Linux")
+		}
+
+		// Make the main executable executable
+		if err := os.Chmod(claudeExeNew, 0755); err != nil {
+			fmt.Printf("Warning: Could not set executable permissions: %v\n", err)
+		}
+
+		// Make other Electron executables executable
+		electronExes := []string{
+			"chrome-sandbox",
+			"chrome_crashpad_handler",
+		}
+		for _, exe := range electronExes {
+			exePath := filepath.Join(AppFolder, exe)
+			if err := os.Chmod(exePath, 0755); err != nil {
+				// Don't warn, might not exist
+				continue
+			}
 		}
 	}
 

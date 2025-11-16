@@ -31,9 +31,9 @@ func getPlatformSuffix() string {
 	}
 }
 
-// getArchSuffix returns the architecture suffix for macOS releases
+// getArchSuffix returns the architecture suffix for macOS and Linux releases
 func getArchSuffix() string {
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
 		return strings.ToLower(runtime.GOARCH) // "amd64" or "arm64"
 	}
 	return ""
@@ -135,14 +135,18 @@ func CheckAndUpdate() error {
 	var downloadURL string
 	var assetName string
 
-	if runtime.GOOS == "darwin" {
-		// For macOS, try architecture-specific first, then fall back to generic
+	if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
+		// For macOS and Linux, try architecture-specific first, then fall back to generic
 		arch := getArchSuffix()
-		archSpecificSuffix := fmt.Sprintf("-macos-%s", arch)
+		platformName := runtime.GOOS
+		if platformName == "darwin" {
+			platformName = "macos"
+		}
+		archSpecificSuffix := fmt.Sprintf("-%s-%s", platformName, arch)
 
-		fmt.Printf("Looking for macOS release (architecture: %s)...\n", arch)
+		fmt.Printf("Looking for %s release (architecture: %s)...\n", platformName, arch)
 
-		// First try: architecture-specific (e.g., "-macos-arm64")
+		// First try: architecture-specific (e.g., "-macos-arm64" or "-linux-amd64")
 		for _, asset := range release.Assets {
 			if strings.Contains(asset.Name, archSpecificSuffix) && strings.HasSuffix(asset.Name, ".zip") {
 				downloadURL = asset.DownloadURL
@@ -152,19 +156,19 @@ func CheckAndUpdate() error {
 			}
 		}
 
-		// Second try: generic macOS (e.g., "-macos")
+		// Second try: generic platform (e.g., "-macos" or "-linux")
 		if downloadURL == "" {
 			for _, asset := range release.Assets {
 				if strings.Contains(asset.Name, platformSuffix) && strings.HasSuffix(asset.Name, ".zip") {
 					downloadURL = asset.DownloadURL
 					assetName = asset.Name
-					fmt.Printf("Found generic macOS release: %s\n", assetName)
+					fmt.Printf("Found generic %s release: %s\n", platformName, assetName)
 					break
 				}
 			}
 		}
 	} else {
-		// For non-macOS platforms, use existing logic
+		// For Windows, use simple platform suffix matching
 		for _, asset := range release.Assets {
 			if strings.Contains(asset.Name, platformSuffix) && strings.HasSuffix(asset.Name, ".zip") {
 				downloadURL = asset.DownloadURL
@@ -297,6 +301,52 @@ rm -rf "%s"
 		cmd := exec.Command("sh", "-c", script)
 		if err := cmd.Start(); err != nil {
 			os.RemoveAll(tempDir)
+			return fmt.Errorf("failed to start update script: %v", err)
+		}
+		os.Exit(0)
+
+	} else if runtime.GOOS == "linux" {
+		// Linux - flat structure, use shell script approach
+		executableName := getExecutableName()
+
+		// First, make sure the executable exists
+		newExePath := filepath.Join(tempDir, executableName)
+		if _, err := os.Stat(newExePath); err != nil {
+			os.Remove(tempZip)
+			os.RemoveAll(tempDir)
+			return fmt.Errorf("failed to find executable in update: %v", err)
+		}
+
+		exePath, _ := os.Executable()
+		appDir := filepath.Dir(exePath)
+
+		fmt.Println("Replacing executable and restarting...")
+
+		// Create shell script to replace binary and relaunch
+		script := fmt.Sprintf(`#!/bin/bash
+sleep 1
+cp -f "%s/%s" "%s/%s"
+chmod +x "%s/%s"
+"%s/%s" &
+rm -rf "%s"
+rm -f "%s"
+`, tempDir, executableName, appDir, executableName,
+			appDir, executableName,
+			appDir, executableName,
+			tempDir, tempZip)
+
+		scriptPath := filepath.Join(utils.GetCachePath(), "update.sh")
+		if err := os.WriteFile(scriptPath, []byte(script), 0755); err != nil {
+			os.Remove(tempZip)
+			os.RemoveAll(tempDir)
+			return fmt.Errorf("failed to create update script: %v", err)
+		}
+
+		// Execute script in background and exit
+		cmd := exec.Command("sh", scriptPath)
+		if err := cmd.Start(); err != nil {
+			os.RemoveAll(tempDir)
+			os.Remove(tempZip)
 			return fmt.Errorf("failed to start update script: %v", err)
 		}
 		os.Exit(0)

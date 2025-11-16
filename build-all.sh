@@ -157,29 +157,135 @@ GOOS=windows GOARCH=amd64 go build -o "$APP_NAME.exe"
 
 if [ -f "$APP_NAME.exe" ]; then
     echo "  Creating Windows distribution zip..."
-    
+
     # Create temporary directory for packaging
     temp_dir="builds/temp-windows"
     mkdir -p "$temp_dir"
-    
+
     # Copy executable and batch scripts to temp directory
     cp "$APP_NAME.exe" "$temp_dir/"
     cp "resources/Toggle-Startup.bat" "$temp_dir/"
     cp "resources/Toggle-StartMenu.bat" "$temp_dir/"
-    
+
     # Create zip from temp directory
     cd "$temp_dir"
     zip "../$APP_NAME-$VERSION-windows.zip" *
     cd ../..
-    
+
     # Clean up
     rm "$APP_NAME.exe"
     rm -rf "$temp_dir"
-    
+
     echo "  ✅ Created: builds/$APP_NAME-$VERSION-windows.zip"
 else
     echo "  ❌ Windows build failed!"
 fi
+
+# Build 4 & 5: Linux (AMD64 and ARM64)
+for arch in amd64 arm64; do
+    build_num=$((arch == "amd64" ? 4 : 5))
+    echo ""
+    echo "$build_num. Building Linux ($arch)..."
+    GOOS=linux GOARCH=$arch go build -o "$APP_NAME-linux-$arch"
+
+    if [ -f "$APP_NAME-linux-$arch" ]; then
+        echo "  Creating Linux distribution zip..."
+
+        # Create temporary directory for packaging
+        temp_dir="builds/temp-linux-$arch"
+        mkdir -p "$temp_dir"
+
+        # Copy executable
+        cp "$APP_NAME-linux-$arch" "$temp_dir/$APP_NAME"
+        chmod +x "$temp_dir/$APP_NAME"
+
+        # Create .desktop file
+        cat > "$temp_dir/claude-webext-launcher.desktop" << EOF
+[Desktop Entry]
+Version=1.1
+Type=Application
+Name=Claude (WebExtension Launcher)
+Comment=Claude AI Desktop with Web Extension Support
+Exec=$APP_NAME
+Icon=claude-webext-launcher
+Terminal=false
+Categories=Utility;Development;Office;
+Keywords=ai;assistant;claude;anthropic;
+StartupWMClass=Claude
+StartupNotify=true
+EOF
+
+        # Create installation script
+        cat > "$temp_dir/install.sh" << 'INSTALLEOF'
+#!/bin/bash
+set -e
+
+echo "Installing Claude WebExtension Launcher..."
+
+INSTALL_DIR="$HOME/.local/share/claude-webext-launcher"
+BIN_DIR="$HOME/.local/bin"
+DESKTOP_DIR="$HOME/.local/share/applications"
+
+mkdir -p "$INSTALL_DIR" "$BIN_DIR" "$DESKTOP_DIR"
+
+cp Claude_WebExtension_Launcher "$INSTALL_DIR/"
+chmod +x "$INSTALL_DIR/Claude_WebExtension_Launcher"
+
+ln -sf "$INSTALL_DIR/Claude_WebExtension_Launcher" "$BIN_DIR/claude-webext"
+
+sed "s|Exec=Claude_WebExtension_Launcher|Exec=$BIN_DIR/claude-webext|g" \
+    claude-webext-launcher.desktop > "$DESKTOP_DIR/claude-webext-launcher.desktop"
+
+update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
+
+echo "✓ Installation complete!"
+echo "Run 'claude-webext' or search for 'Claude' in your application menu"
+INSTALLEOF
+        chmod +x "$temp_dir/install.sh"
+
+        # Create uninstallation script
+        cat > "$temp_dir/uninstall.sh" << 'UNINSTALLEOF'
+#!/bin/bash
+set -e
+
+echo "Uninstalling Claude WebExtension Launcher..."
+
+rm -rf "$HOME/.local/share/claude-webext-launcher"
+rm -f "$HOME/.local/bin/claude-webext"
+rm -f "$HOME/.local/share/applications/claude-webext-launcher.desktop"
+rm -f "$HOME/.config/autostart/claude-webext-launcher.desktop"
+
+update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
+
+echo "✓ Uninstallation complete!"
+UNINSTALLEOF
+        chmod +x "$temp_dir/uninstall.sh"
+
+        # Create README
+        cat > "$temp_dir/README.txt" << 'READMEEOF'
+Claude WebExtension Launcher for Linux
+
+Installation: ./install.sh
+Uninstallation: ./uninstall.sh
+
+For more information:
+https://github.com/lugia19/claude-webext-patcher
+READMEEOF
+
+        # Create zip from temp directory
+        cd "$temp_dir"
+        zip "../$APP_NAME-$VERSION-linux-$arch.zip" *
+        cd ../..
+
+        # Clean up
+        rm "$APP_NAME-linux-$arch"
+        rm -rf "$temp_dir"
+
+        echo "  ✅ Created: builds/$APP_NAME-$VERSION-linux-$arch.zip"
+    else
+        echo "  ❌ Linux $arch build failed!"
+    fi
+done
 
 # Summary
 echo ""
@@ -197,6 +303,14 @@ fi
 
 if [ -f "builds/$APP_NAME-$VERSION-windows.zip" ]; then
     echo "✅ Windows: builds/$APP_NAME-$VERSION-windows.zip"
+fi
+
+if [ -f "builds/$APP_NAME-$VERSION-linux-amd64.zip" ]; then
+    echo "✅ Linux AMD64: builds/$APP_NAME-$VERSION-linux-amd64.zip"
+fi
+
+if [ -f "builds/$APP_NAME-$VERSION-linux-arm64.zip" ]; then
+    echo "✅ Linux ARM64: builds/$APP_NAME-$VERSION-linux-arm64.zip"
 fi
 
 echo ""

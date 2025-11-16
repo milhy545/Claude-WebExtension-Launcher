@@ -1,4 +1,4 @@
-# Claude Code Desktop for Linux - Complete Design Specification
+# Claude WebExtension Launcher for Linux - Complete Design Specification
 
 ## Executive Summary
 
